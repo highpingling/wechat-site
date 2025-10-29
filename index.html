@@ -517,7 +517,41 @@
       const messageText = messageInput.value.trim();
       if (messageText === "") return;
 
-      addMessage(messageText, "me");
+      // 提取括号内的指令或情境
+      let userMessageForDisplay = messageText; // 用于显示给用户的消息
+      let messageForLLM = messageText; // 发送给LLM的消息
+      const bracketContent = [];
+      const regex = /\((.*?)\)/g; // 匹配所有括号内容
+      let match;
+
+      // 从用户输入中提取所有括号内容，并将其从messageText中移除（为了显示）
+      // 同时构建发送给LLM的消息：指令在前，实际消息在后
+      while ((match = regex.exec(messageText)) !== null) {
+          if (match[1].trim() !== '') {
+              bracketContent.push(match[1].trim());
+          }
+      }
+
+      // 移除括号及其内容，得到纯文本消息
+      userMessageForDisplay = messageText.replace(regex, '').trim();
+
+      // 如果有提取到指令，将其放在消息前端
+      if (bracketContent.length > 0) {
+          messageForLLM = `(${bracketContent.join(';')}) ${userMessageForDisplay}`;
+      } else {
+          messageForLLM = userMessageForDisplay;
+      }
+      
+      // 如果纯文本消息为空，且指令不为空，则仅发送指令
+      if (userMessageForDisplay === '' && bracketContent.length > 0) {
+          userMessageForDisplay = `(${bracketContent.join(';')})`; // 显示时也显示指令
+      } else if (userMessageForDisplay === '' && bracketContent.length === 0) {
+          // 如果纯文本消息和指令都为空，则不发送
+          return;
+      }
+
+
+      addMessage(userMessageForDisplay, "me"); // 聊天界面显示的是去除括号后的消息或原始消息
       messageInput.value = "";
 
       // 显示加载提示
@@ -533,7 +567,8 @@
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ message: messageText, user_name: currentUser.name, boyfriend_name: boyfriend.name }),
+          // 这里我们将处理后的 messageForLLM 发送给后端
+          body: JSON.stringify({ message: messageForLLM, user_name: currentUser.name, boyfriend_name: boyfriend.name }),
         });
 
         if (!response.ok) {
