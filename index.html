@@ -382,7 +382,7 @@
 
     let boyfriend = JSON.parse(localStorage.getItem('boyfriend')) || {
       name: "虚拟男友",
-      avatar: DEFAULT_BOYFRIEND_AVATAR
+      avatar: DEFAULT_BOYFRIEND_AVAR
     };
 
     const chatMessages = document.getElementById("chat-messages");
@@ -469,7 +469,17 @@
 
         const data = await response.json();
         chatMessages.removeChild(loadingDiv); // 移除加载提示
-        addMessage(data.reply, "boyfriend", true); // LLM回复，可转语音
+        
+        // --- START OF MODIFICATION ---
+        // 将LLM回复按换行符分割成多条消息
+        const replies = data.reply.split('\n').filter(r => r.trim() !== ''); // 过滤空字符串
+        
+        // 逐条添加消息到聊天界面
+        for (const reply of replies) {
+            addMessage(reply.trim(), "boyfriend", true); // LLM回复，可转语音
+        }
+        // --- END OF MODIFICATION ---
+
       } catch (error) {
         console.error("发送消息失败:", error);
         chatMessages.removeChild(loadingDiv); // 移除加载提示
@@ -568,7 +578,7 @@
         } else if (boyfriendAvatarUrlInput.value.trim()) {
             boyfriend.avatar = boyfriendAvatarUrlInput.value.trim();
         } else {
-            boyfriend.avatar = DEFAULT_BOYFRIEND_AVATAR;
+            boyfriend.avatar = DEFAULT_BOYFRIEND_AVAR;
         }
 
         localStorage.setItem('currentUser', JSON.stringify(currentUser));
