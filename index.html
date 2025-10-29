@@ -73,7 +73,6 @@
       background-size: cover; /* 背景图覆盖整个区域 */
       background-position: center; /* 背景图居中 */
       background-repeat: no-repeat; /* 不重复 */
-      background-attachment: fixed; /* 壁纸固定，聊天内容滚动 */
     }
 
     /* 消息气泡容器 */
@@ -113,7 +112,10 @@
 
     /* 消息内容气泡 */
     .message-content {
-      max-width: 70%; /* 消息气泡最大宽度 */
+      /* max-width 计算：100% - 头像宽度 - 头像到气泡的间隔 - 气泡到按钮的间隔 - 按钮宽度 (如果存在) - 消息左右内边距 */
+      /* 假设头像40px, 间隔10px, 按钮宽度80px左右 (文字+内边距), 气泡左右padding 12px*2 */
+      /* 注意：这里需要考虑flex布局下，剩余空间的分配，所以直接使用 max-width: 70% 或 calc 方式 */
+      max-width: calc(100% - 40px - 10px - 10px - 80px - 24px); /* 重新计算，确保气泡有足够空间 */
       min-width: 0; /* 允许内容区域收缩到最小 */
       background-color: #fff;
       padding: 10px 12px;
@@ -317,76 +319,6 @@
         font-size: 14px;
     }
 
-    /* ============== 微信转账气泡样式 (男友发送) ============== */
-    .message.boyfriend .message-content.transfer {
-        background-color: #ff8b32; /* 微信转账橘色 */
-        color: white; /* 文字颜色 */
-        padding: 10px 15px; /* 内边距 */
-        border-radius: 8px; /* 圆角 */
-        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-        display: flex; /* 使用flex布局让图标和文字对齐 */
-        align-items: center; /* 垂直居中 */
-        min-width: 160px; /* 最小宽度 */
-        max-width: 250px; /* 最大宽度，防止过长 */
-        text-align: left;
-        position: relative; /* 确保箭头定位正确 */
-    }
-    .message.boyfriend .message-content.transfer::before {
-        /* 转账气泡的箭头需要指向左侧 */
-        content: '';
-        position: absolute;
-        left: -8px;
-        top: 10px;
-        width: 0;
-        height: 0;
-        border-style: solid;
-        border-width: 6px 8px 6px 0;
-        border-color: transparent #ff8b32 transparent transparent;
-    }
-
-
-    .transfer-bubble-icon {
-        width: 38px; /* 图标大小 */
-        height: 38px;
-        background-color: rgba(255,255,255,0.2); /* 半透明白色背景 */
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-right: 10px;
-        flex-shrink: 0; /* 防止图标被压缩 */
-    }
-    .transfer-bubble-icon svg {
-        width: 20px; /* SVG图标大小 */
-        height: 20px;
-        fill: white; /* SVG图标颜色 */
-        /* 旋转图标使其与图片中的方向一致 */
-        transform: rotate(45deg); 
-    }
-
-    .transfer-bubble-details {
-        flex-grow: 1; /* 文本占据剩余空间 */
-        color: white;
-    }
-    .transfer-bubble-details .amount {
-        font-size: 20px; /* 金额字体 */
-        font-weight: bold;
-        display: block; /* 独立一行 */
-        margin-bottom: 2px;
-    }
-    .transfer-bubble-details .label {
-        font-size: 12px; /* “请收款”字体 */
-        opacity: 0.9;
-    }
-    .transfer-bubble-footer {
-        font-size: 10px;
-        opacity: 0.7;
-        margin-top: 5px;
-        text-align: right; /* 微信转账字样靠右 */
-        display: block;
-    }
-
-
     /* 响应式调整 */
     @media (max-width: 600px) {
         body {
@@ -457,10 +389,8 @@
         <!-- 默认不显示，只有设置了图片才显示 -->
 
         <button onclick="saveSettings()">保存设置</button>
-        <button style="background-color: #f44336; margin-top: 10px;" onclick="clearChatMemory()">清除聊天记录和记忆</button>
       </div>
     </div>
-
   </div>
 
   <audio id="player" preload="auto" style="display:none"></audio>
@@ -469,13 +399,11 @@
     // 后端接口地址 - 请根据你的实际部署修改
     const BACKEND_CHAT_URL = "https://sonnet.highpingling.workers.dev/"; // 你的LLM聊天接口
     const BACKEND_TTS_URL = "https://tts.highpingling.workers.dev/";   // 你的语音合成接口
-    const BACKEND_SUMMARY_URL = "YOUR_SUMMARY_API_ENDPOINT"; // 你的LLM摘要接口，如果支持的话
 
     // 默认头像路径 (请确保这些图片存在于你的项目根目录)
     const DEFAULT_ME_AVATAR = "./avatar_me.png";
     const DEFAULT_BOYFRIEND_AVATAR = "./avatar_boyfriend.png";
-    // 默认壁纸 URL (从 GitHub Raw 获取)
-    const DEFAULT_WALLPAPER_URL = "https://raw.githubusercontent.com/highpingling/wechat-site/main/wallpaper.png";
+    const DEFAULT_WALLPAPER = ""; // 默认无壁纸，使用 CSS 背景色
 
     // 从 localStorage 获取或设置用户信息
     let currentUser = JSON.parse(localStorage.getItem('currentUser')) || {
@@ -488,21 +416,14 @@
       avatar: DEFAULT_BOYFRIEND_AVATAR
     };
 
-    // 存储用户自定义的壁纸 URL 和本地文件 Base64
-    let userSetWallpaperUrl = localStorage.getItem('userSetWallpaperUrl') || '';
-    let userSetWallpaperLocal = localStorage.getItem('userSetWallpaperLocal') || '';
-
-    // 短期记忆存储
-    let chatHistory = JSON.parse(localStorage.getItem('chatHistory')) || [];
-    let chatSummary = localStorage.getItem('chatSummary') || "";
-    const MAX_CHAT_HISTORY_FOR_SUMMARY = 20; // 超过这个数量就考虑生成摘要
+    // 新增：聊天壁纸设置
+    let chatWallpaper = localStorage.getItem('chatWallpaper') || DEFAULT_WALLPAPER;
 
     const chatMessages = document.getElementById("chat-messages");
     const messageInput = document.getElementById("message-input");
     const sendButton = document.getElementById("send-button");
     const audioPlayer = document.getElementById("player");
     const settingsModal = document.getElementById("settingsModal");
-
 
     const myNameInput = document.getElementById("my-name-input");
     const myAvatarUrlInput = document.getElementById("my-avatar-url-input");
@@ -516,7 +437,7 @@
     const boyfriendNameDisplay = document.getElementById("boyfriend-name-display");
     const initialBoyfriendAvatarDisplay = document.getElementById("initial-boyfriend-avatar-display");
 
-    // 壁纸相关元素
+    // 新增壁纸相关元素
     const chatWallpaperUrlInput = document.getElementById("chat-wallpaper-url-input");
     const chatWallpaperFileInput = document.getElementById("chat-wallpaper-file-input");
     const chatWallpaperPreview = document.getElementById("chat-wallpaper-preview");
@@ -533,65 +454,35 @@
         boyfriendNameInput.value = boyfriend.name;
         boyfriendAvatarUrlInput.value = boyfriend.avatar.startsWith('http') ? boyfriend.avatar : '';
         boyfriendAvatarPreview.src = boyfriend.avatar;
-        
+
+        // 聊天壁纸
+        chatWallpaperUrlInput.value = chatWallpaper.startsWith('http') ? chatWallpaper : '';
+        chatWallpaperPreview.src = chatWallpaper;
+        chatWallpaperPreview.style.display = chatWallpaper ? 'block' : 'none'; // 如果有壁纸才显示预览
+
         // 更新聊天界面的男友昵称和初始消息头像
         boyfriendNameDisplay.textContent = boyfriend.name;
         if (initialBoyfriendAvatarDisplay) {
             initialBoyfriendAvatarDisplay.src = boyfriend.avatar;
         }
 
-        // 聊天壁纸设置 (加载到设置面板)
-        if (userSetWallpaperLocal) { // 优先显示用户上传的本地文件
-            chatWallpaperPreview.src = userSetWallpaperLocal;
-            chatWallpaperPreview.style.display = 'block';
-            chatWallpaperUrlInput.value = ''; // 清空URL输入框，因为本地文件优先级高
-        } else if (userSetWallpaperUrl) { // 其次显示用户设置的URL
-            chatWallpaperPreview.src = userSetWallpaperUrl;
-            chatWallpaperPreview.style.display = 'block';
-            chatWallpaperUrlInput.value = userSetWallpaperUrl;
-        } else if (DEFAULT_WALLPAPER_URL) { // 最后显示默认在线壁纸
-            chatWallpaperPreview.src = DEFAULT_WALLPAPER_URL;
-            chatWallpaperPreview.style.display = 'block';
-            chatWallpaperUrlInput.value = DEFAULT_WALLPAPER_URL; // 在输入框中显示默认URL
-        } else {
-            chatWallpaperPreview.src = '';
-            chatWallpaperPreview.style.display = 'none';
-            chatWallpaperUrlInput.value = '';
-        }
-
-        applyWallpaper(); // 应用当前壁纸设置到聊天界面
+        applyWallpaper(); // 应用当前壁纸设置
     }
 
-    // 应用聊天壁纸到聊天界面 (根据优先级)
+    // 应用聊天壁纸
     function applyWallpaper() {
-        let currentWallpaper = '';
-        if (userSetWallpaperLocal) { // 最高优先级：用户本地上传的 Base64
-            currentWallpaper = userSetWallpaperLocal;
-        } else if (userSetWallpaperUrl) { // 其次：用户在设置中输入的 URL
-            currentWallpaper = userSetWallpaperUrl;
-        } else if (DEFAULT_WALLPAPER_URL) { // 再次：默认的 GitHub URL
-            currentWallpaper = DEFAULT_WALLPAPER_URL;
-        }
-
-        if (currentWallpaper) {
-            chatMessages.style.backgroundImage = `url('${currentWallpaper}')`;
+        if (chatWallpaper) {
+            chatMessages.style.backgroundImage = `url('${chatWallpaper}')`;
         } else {
             chatMessages.style.backgroundImage = 'none'; // 移除背景图
             chatMessages.style.backgroundColor = '#ededed'; // 恢复默认背景色
         }
     }
 
-    // 格式化金额显示 (例如: 1234567.89 -> 1,234,567.89)
-    function formatAmount(amount) {
-        if (isNaN(amount)) return '0.00';
-        return parseFloat(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    }
 
     // 将消息添加到聊天界面
-    // 增加了 messageType 参数，可以是 'text' (默认) 或 'transfer'
-    function addMessage(content, sender, messageType = 'text', amount = 0) {
+    function addMessage(text, sender, isBoyfriendMessage = false) {
       const messageDiv = document.createElement("div");
-      // 注意：这里移除了 isBoyfriendMessage 参数，因为它可以通过 sender 判断
       messageDiv.classList.add("message", sender === "me" ? "me" : "boyfriend");
 
       const avatarSrc = sender === "me" ? currentUser.avatar : boyfriend.avatar;
@@ -600,98 +491,292 @@
       // 构建头像 HTML
       const avatarHtml = `<img src="${avatarSrc}" class="message-avatar" alt="${avatarAlt}头像">`;
 
-      let contentHtml;
-      let ttsButtonHtml = ''; // 语音按钮默认为空
+      // 构建消息内容 HTML
+      const contentHtml = `
+        <div class="message-content">
+          <p class="message-text">${text}</p>
+        </div>
+      `;
 
-      if (messageType === 'transfer' && sender === "boyfriend") {
-          // 男友发送的转账消息
-          contentHtml = `
-            <div class="message-content transfer">
-              <div class="transfer-bubble-icon">
-                <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" width="200" height="200">
-                    <path d="M720 384c-35.2 0-64 28.8-64 64v192c0 35.2 28.8 64 64 64h192c35.2 0 64-28.8 64-64V448c0-35.2-28.8-64-64-64H720z m0 64h192v192H720V448zM384 384c-35.2 0-64 28.8-64 64v192c0 35.2 28.8 64 64 64h192c35.2 0 64-28.8 64-64V448c0-35.2-28.8-64-64-64H384z m0 64h192v192H384V448zM640 128c-35.2 0-64 28.8-64 64v192c0 35.2 28.8 64 64 64h192c35.2 0 64-28.8 64-64V192c0-35.2-28.8-64-64-64H640z m0 64h192v192H640V192zM128 128c-35.2 0-64 28.8-64 64v192c0 35.2 28.8 64 64 64h192c35.2 0 64-28.8 64-64V192c0-35.2-28.8-64-64-64H128z m0 64h192v192H128V192zM560 128c-35.2 0-64 28.8-64 64v192c0 35.2 28.8 64 64 64h192c35.2 0 64-28.8 64-64V192c0-35.2-28.8-64-64-64H560z m0 64h192v192H560V192z" fill="white"/>
-                </svg>
-              </div>
-              <div class="transfer-bubble-details">
-                <span class="amount">¥${formatAmount(amount)}</span>
-                <span class="label">请收款</span>
-              </div>
-            </div>
-            <span class="transfer-bubble-footer">微信转账</span> <!-- 这个放在气泡外，但视觉上在下面 -->
-          `;
-          // 转账消息不提供语音转换
-      } else {
-          // 普通文本消息
-          contentHtml = `
-            <div class="message-content">
-              <p class="message-text">${content}</p>
-            </div>
-          `;
-          if (sender === "boyfriend") { // 只有男友的普通消息才提供语音转换
-              ttsButtonHtml = '<button class="tts-button" onclick="speakText(this)">转语音</button>';
-          }
-      }
+      // 构建语音按钮 HTML (只为男友消息显示)
+      const ttsButtonHtml = isBoyfriendMessage ? '<button class="tts-button" onclick="speakText(this)">转语音</button>' : '';
 
       // 根据发送者重新组织元素的顺序
-      // 对于男友的转账消息，footer 应该在 avatar 之后，content 之后
       if (sender === "me") {
         messageDiv.innerHTML = contentHtml + avatarHtml; // 我的消息：内容在左，头像在右
       } else {
-        // 男友消息：头像在左，内容居中，按钮在右（如果有）
-        // 如果是转账，transfer-bubble-footer 会在 message-content 内部，不需要单独处理 ttsButtonHtml
-        messageDiv.innerHTML = avatarHtml + contentHtml + ttsButtonHtml; 
+        messageDiv.innerHTML = avatarHtml + contentHtml + ttsButtonHtml; // 男友消息：头像在左，内容居中，按钮在右
       }
       
       chatMessages.appendChild(messageDiv);
       chatMessages.scrollTop = chatMessages.scrollHeight; // 滚动到底部
-
-      // 添加到聊天历史，只记录文本消息和转账金额
-      chatHistory.push({
-          sender: sender,
-          type: messageType,
-          content: content,
-          amount: messageType === 'transfer' ? amount : null,
-          timestamp: new Date().toISOString()
-      });
-      saveChatHistory(); // 每次添加消息后保存历史记录
     }
 
-    // 保存聊天记录到 localStorage
-    function saveChatHistory() {
-        localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
-        // TODO: 考虑在合适时机生成摘要并存储
+    // 发送消息
+    async function sendMessage() {
+      const messageText = messageInput.value.trim();
+      if (messageText === "") return;
+
+      // 提取括号内的指令或情境
+      let userMessageForDisplay = messageText; // 用于显示给用户的消息
+      let messageForLLM = messageText; // 发送给LLM的消息
+      const bracketContent = [];
+      const regex = /\((.*?)\)/g; // 匹配所有括号内容
+      let match;
+
+      // 从用户输入中提取所有括号内容，并将其从messageText中移除（为了显示）
+      // 同时构建发送给LLM的消息：指令在前，实际消息在后
+      while ((match = regex.exec(messageText)) !== null) {
+          if (match[1].trim() !== '') {
+              bracketContent.push(match[1].trim());
+          }
+      }
+
+      // 移除括号及其内容，得到纯文本消息
+      userMessageForDisplay = messageText.replace(regex, '').trim();
+
+      // 如果有提取到指令，将其放在消息前端
+      if (bracketContent.length > 0) {
+          messageForLLM = `(${bracketContent.join(';')}) ${userMessageForDisplay}`;
+      } else {
+          messageForLLM = userMessageForDisplay;
+      }
+      
+      // 如果纯文本消息为空，且指令不为空，则仅发送指令
+      if (userMessageForDisplay === '' && bracketContent.length > 0) {
+          userMessageForDisplay = `(${bracketContent.join(';')})`; // 显示时也显示指令
+      } else if (userMessageForDisplay === '' && bracketContent.length === 0) {
+          // 如果纯文本消息和指令都为空，则不发送
+          return;
+      }
+
+
+      addMessage(userMessageForDisplay, "me"); // 聊天界面显示的是去除括号后的消息或原始消息
+      messageInput.value = "";
+
+      // 显示加载提示
+      const loadingDiv = document.createElement("div");
+      loadingDiv.classList.add("loading-indicator");
+      loadingDiv.textContent = "对方正在输入...";
+      chatMessages.appendChild(loadingDiv);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+
+      try {
+        const response = await fetch(BACKEND_CHAT_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          // 这里我们将处理后的 messageForLLM 发送给后端
+          body: JSON.stringify({ message: messageForLLM, user_name: currentUser.name, boyfriend_name: boyfriend.name }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        chatMessages.removeChild(loadingDiv); // 移除加载提示
+        
+        // 将LLM回复按换行符分割成多条消息
+        const replies = data.reply.split('\n').filter(r => r.trim() !== ''); // 过滤空字符串
+        
+        // 逐条添加消息到聊天界面
+        for (const reply of replies) {
+            addMessage(reply.trim(), "boyfriend", true); // LLM回复，可转语音
+        }
+
+      } catch (error) {
+        console.error("发送消息失败:", error);
+        chatMessages.removeChild(loadingDiv); // 移除加载提示
+        addMessage("我暂时无法回答你的问题，请稍后再试。", "boyfriend");
+      }
     }
 
-    // 从 localStorage 加载聊天记录并渲染
-    function loadChatHistory() {
-        const savedHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
-        if (savedHistory.length > 0) {
-            if (confirm("检测到上次的聊天记录，是否加载？")) {
-                chatHistory = []; // 清空当前历史，加载旧的
-                chatMessages.innerHTML = ''; // 清空当前聊天界面
-                savedHistory.forEach(msg => {
-                    addMessage(msg.content, msg.sender, msg.type, msg.amount);
-                });
-                chatMessages.scrollTop = chatMessages.scrollHeight; // 滚动到底部
+    // 文本转语音
+    async function speakText(button) {
+      // 语音按钮的文本内容现在在 .message-content 下的 .message-text P标签中
+      const messageContentElement = button.previousElementSibling.querySelector('.message-text');
+      const messageContent = messageContentElement ? messageContentElement.textContent : ""; // 获取消息文本
+
+      if (!messageContent) {
+          console.warn("未找到可转语音的消息文本。");
+          return;
+      }
+
+      button.disabled = true;
+      button.textContent = "加载语音...";
+
+      try {
+        const response = await fetch(BACKEND_TTS_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ text: messageContent }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+
+        const audioBlob = await response.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        audioPlayer.src = audioUrl;
+        audioPlayer.play();
+
+        audioPlayer.onended = () => {
+          URL.revokeObjectURL(audioUrl); // 播放结束后释放URL资源
+          button.disabled = false;
+          button.textContent = "转语音";
+        };
+
+      } catch (error) {
+        console.error("语音合成失败:", error);
+        alert("语音合成失败，请检查后端服务。");
+        button.disabled = false;
+        button.textContent = "转语音";
+      }
+    }
+
+    // 打开设置模态框
+    function openSettings() {
+        loadSettings(); // 每次打开都重新加载最新设置
+        settingsModal.style.display = "flex";
+    }
+
+    // 关闭设置模态框
+    function closeSettings() {
+        settingsModal.style.display = "none";
+    }
+
+    // 通用处理文件选择和URL输入的函数
+    function handleImageInput(fileInputElement, urlInputElement, previewElement, storageKey, defaultSrc) {
+        fileInputElement.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    previewElement.src = e.target.result;
+                    previewElement.style.display = 'block'; // 显示预览
+                    urlInputElement.value = ''; // 如果选择了文件，清空URL输入框
+                    // 更新对应的全局变量（如果需要，例如头像或壁纸）
+                    if (storageKey === 'currentUserAvatar') currentUser.avatar = e.target.result;
+                    else if (storageKey === 'boyfriendAvatar') boyfriend.avatar = e.target.result;
+                    else if (storageKey === 'chatWallpaper') chatWallpaper = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            } else if (!urlInputElement.value && !defaultSrc) {
+                previewElement.src = '';
+                previewElement.style.display = 'none'; // 隐藏预览
+                // 重置对应的全局变量
+                if (storageKey === 'currentUserAvatar') currentUser.avatar = DEFAULT_ME_AVATAR;
+                else if (storageKey === 'boyfriendAvatar') boyfriend.avatar = DEFAULT_BOYFRIEND_AVATAR;
+                else if (storageKey === 'chatWallpaper') chatWallpaper = DEFAULT_WALLPAPER;
             }
+        });
+
+        urlInputElement.addEventListener('input', () => {
+            if (urlInputElement.value.trim()) {
+                previewElement.src = urlInputElement.value.trim();
+                previewElement.style.display = 'block'; // 显示预览
+                fileInputElement.value = ''; // 如果输入了URL，清空文件选择
+                // 更新对应的全局变量
+                if (storageKey === 'currentUserAvatar') currentUser.avatar = urlInputElement.value.trim();
+                else if (storageKey === 'boyfriendAvatar') boyfriend.avatar = urlInputElement.value.trim();
+                else if (storageKey === 'chatWallpaper') chatWallpaper = urlInputElement.value.trim();
+            } else if (!fileInputElement.files[0] && !defaultSrc) {
+                previewElement.src = '';
+                previewElement.style.display = 'none'; // 隐藏预览
+                 // 重置对应的全局变量
+                if (storageKey === 'currentUserAvatar') currentUser.avatar = DEFAULT_ME_AVATAR;
+                else if (storageKey === 'boyfriendAvatar') boyfriend.avatar = DEFAULT_BOYFRIEND_AVATAR;
+                else if (storageKey === 'chatWallpaper') chatWallpaper = DEFAULT_WALLPAPER;
+            }
+        });
+
+        // 首次加载时处理预览显示
+        if (previewElement.src && previewElement.src !== window.location.href + '#') { // 检查src是否为空或无效
+            previewElement.style.display = 'block';
+        } else {
+            previewElement.style.display = 'none';
         }
     }
 
-    // 清除聊天记录和记忆
-    function clearChatMemory() {
-        if (confirm("确定要清除所有聊天记录和记忆吗？此操作不可逆。")) {
-            localStorage.removeItem('chatHistory');
-            localStorage.removeItem('chatSummary');
-            chatHistory = [];
-            chatSummary = "";
-            chatMessages.innerHTML = `
-                <div class="message boyfriend">
-                    <img src="${boyfriend.avatar}" class="message-avatar" alt="男友头像">
-                    <div class="message-content">
-                        <p class="message-text">宝贝，在干嘛呢，想我了吗？</p>
-                    </div>
-                    <button class="tts-button" onclick="speakText(this)">转语音</button>
-                </div>
-            `; // 恢复初始消息
-            alert("聊天记录和记忆已清除！");
-            close
+
+    // 保存设置
+    function saveSettings() {
+        // 保存我的信息
+        currentUser.name = myNameInput.value.trim() || "我";
+        if (myAvatarFileInput.files[0]) {
+            currentUser.avatar = myAvatarPreview.src;
+        } else if (myAvatarUrlInput.value.trim()) {
+            currentUser.avatar = myAvatarUrlInput.value.trim();
+        } else {
+            currentUser.avatar = DEFAULT_ME_AVATAR;
+        }
+        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+
+        // 保存男友信息
+        boyfriend.name = boyfriendNameInput.value.trim() || "虚拟男友";
+        if (boyfriendAvatarFileInput.files[0]) {
+            boyfriend.avatar = boyfriendAvatarPreview.src;
+        } else if (boyfriendAvatarUrlInput.value.trim()) {
+            boyfriend.avatar = boyfriendAvatarUrlInput.value.trim();
+        } else {
+            boyfriend.avatar = DEFAULT_BOYFRIEND_AVATAR;
+        }
+        localStorage.setItem('boyfriend', JSON.stringify(boyfriend));
+
+        // 保存聊天壁纸
+        if (chatWallpaperFileInput.files[0]) {
+            chatWallpaper = chatWallpaperPreview.src;
+        } else if (chatWallpaperUrlInput.value.trim()) {
+            chatWallpaper = chatWallpaperUrlInput.value.trim();
+        } else {
+            chatWallpaper = DEFAULT_WALLPAPER; // 如果两个都为空，则使用默认空值
+        }
+        localStorage.setItem('chatWallpaper', chatWallpaper);
+
+
+        // 更新界面显示
+        boyfriendNameDisplay.textContent = boyfriend.name;
+        document.querySelectorAll('.message-avatar').forEach(img => {
+            if (img.alt.includes('男友')) {
+                img.src = boyfriend.avatar;
+            } else if (img.alt.includes('我')) {
+                img.src = currentUser.avatar;
+            }
+        });
+        applyWallpaper(); // 保存后立即应用壁纸
+
+        closeSettings();
+        alert("设置已保存！");
+    }
+
+    // 事件监听
+    sendButton.addEventListener("click", sendMessage);
+    messageInput.addEventListener("keypress", (event) => {
+      if (event.key === "Enter") {
+        sendMessage();
+      }
+    });
+
+    // 初始化头像和壁纸输入监听
+    handleImageInput(myAvatarFileInput, myAvatarUrlInput, myAvatarPreview, 'currentUserAvatar', DEFAULT_ME_AVATAR);
+    handleImageInput(boyfriendAvatarFileInput, boyfriendAvatarUrlInput, boyfriendAvatarPreview, 'boyfriendAvatar', DEFAULT_BOYFRIEND_AVATAR);
+    handleImageInput(chatWallpaperFileInput, chatWallpaperUrlInput, chatWallpaperPreview, 'chatWallpaper', DEFAULT_WALLPAPER);
+
+
+    // 页面加载时加载一次设置，以更新所有界面元素
+    document.addEventListener("DOMContentLoaded", () => {
+        loadSettings();
+        // 初始加载时，确保第一条消息的男友头像也是正确的
+        const initialBoyfriendMessageAvatar = document.querySelector('.message.boyfriend .message-avatar');
+        if (initialBoyfriendMessageAvatar) {
+            initialBoyfriendMessageAvatar.src = boyfriend.avatar;
+        }
+    });
+  </script>
+</body>
+</html>
