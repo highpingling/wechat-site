@@ -92,10 +92,11 @@
     }
 
     .message-avatar {
-      width: 40px;
-      height: 40px;
+      width: 40px; /* 固定宽度 */
+      height: 40px; /* 固定高度 */
       border-radius: 5px;
       flex-shrink: 0; /* 防止头像被压缩 */
+      object-fit: cover; /* 保持图片比例同时填充容器 */
     }
 
     .message.boyfriend .message-avatar {
@@ -113,7 +114,9 @@
     .message-content {
       /* max-width 计算：100% - 头像宽度 - 头像到气泡的间隔 - 气泡到按钮的间隔 - 按钮宽度 (如果存在) - 消息左右内边距 */
       /* 假设头像40px, 间隔10px, 按钮宽度80px左右 (文字+内边距), 气泡左右padding 12px*2 */
-      max-width: calc(100% - 40px - 10px - 10px - 80px - 24px); 
+      /* 注意：这里需要考虑flex布局下，剩余空间的分配，所以直接使用 max-width: 70% 或 calc 方式 */
+      max-width: calc(100% - 40px - 10px - 10px - 80px - 24px); /* 重新计算，确保气泡有足够空间 */
+      min-width: 0; /* 允许内容区域收缩到最小 */
       background-color: #fff;
       padding: 10px 12px;
       border-radius: 8px;
@@ -520,7 +523,7 @@
       // 显示加载提示
       const loadingDiv = document.createElement("div");
       loadingDiv.classList.add("loading-indicator");
-      loadingDiv.textContent = "男友思考中...";
+      loadingDiv.textContent = "对方正在输入...";
       chatMessages.appendChild(loadingDiv);
       chatMessages.scrollTop = chatMessages.scrollHeight;
 
