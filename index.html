@@ -72,31 +72,45 @@
       background-color: #ededed; /* 聊天背景色 */
     }
 
-    /* 消息气泡 */
+    /* 消息气泡容器 */
     .message {
       display: flex;
       margin-bottom: 15px;
-      align-items: flex-start;
+      align-items: flex-start; /* 保持顶部对齐 */
+      position: relative; /* 为内部的相对定位元素提供参考 */
     }
 
     .message.me {
-      justify-content: flex-end;
+      justify-content: flex-end; /* 我的消息靠右 */
     }
 
     .message.boyfriend {
-      justify-content: flex-start;
+      justify-content: flex-start; /* 男友消息靠左 */
     }
 
     .message-avatar {
       width: 40px;
       height: 40px;
       border-radius: 5px;
-      margin: 0 10px;
       flex-shrink: 0; /* 防止头像被压缩 */
     }
 
+    .message.boyfriend .message-avatar {
+      margin-right: 10px; /* 男友头像右侧留白 */
+      margin-left: 0;
+    }
+
+    .message.me .message-avatar {
+      margin-left: 10px; /* 我的头像左侧留白 */
+      margin-right: 0;
+      order: 2; /* 我的头像放在内容之后 */
+    }
+
+    /* 消息内容气泡 */
     .message-content {
-      max-width: calc(100% - 100px); /* 留出头像和边距 */
+      /* max-width 计算：100% - 头像宽度 - 头像到气泡的间隔 - 气泡到按钮的间隔 - 按钮宽度 (如果存在) - 消息左右内边距 */
+      /* 假设头像40px, 间隔10px, 按钮40px左右 */
+      max-width: calc(100% - 40px - 10px - 10px - 40px); /* 留出头像、边距和可能的按钮位置 */
       background-color: #fff;
       padding: 10px 12px;
       border-radius: 8px;
@@ -105,13 +119,13 @@
       line-height: 1.4;
       word-wrap: break-word; /* 文本自动换行 */
       box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
-      display: flex; /* 让内容和按钮并排 */
-      flex-direction: column; /* 内容和按钮上下排列 */
+      flex-shrink: 1; /* 允许内容区域收缩 */
     }
 
     .message.me .message-content {
       background-color: #9fe658; /* 我的消息气泡颜色 */
       color: #333;
+      order: 1; /* 我的消息内容放在头像之前 */
     }
 
     /* 消息气泡箭头 */
@@ -140,24 +154,28 @@
     }
 
     .message-text {
-        margin-bottom: 5px; /* 和转语音按钮的间隔 */
+        margin: 0; /* 移除默认段落外边距 */
     }
 
-    /* 转语音按钮 */
+    /* 转语音按钮 - 独立定位 */
     .tts-button {
-      background-color: #1aad19;
-      color: white;
+      background-color: #e0e0e0; /* 更柔和的按钮颜色 */
+      color: #333;
       border: none;
-      padding: 5px 10px;
+      padding: 5px 8px;
       border-radius: 5px;
       font-size: 12px;
       cursor: pointer;
-      margin-top: 5px; /* 与文本的间隔 */
-      align-self: flex-end; /* 按钮靠右 */
+      margin-left: 10px; /* 与消息气泡的间隔 */
+      flex-shrink: 0; /* 防止按钮被压缩 */
+      height: 28px; /* 稍微控制高度，与气泡内容对齐 */
+      line-height: 1; /* 垂直居中文本 */
+      align-self: center; /* 垂直居中对齐消息内容 */
+      white-space: nowrap; /* 防止按钮文字换行 */
     }
 
     .tts-button:hover {
-        background-color: #18a316;
+        background-color: #d0d0d0;
     }
 
     /* 输入区域 */
@@ -322,11 +340,12 @@
     <div class="chat-messages" id="chat-messages">
       <!-- 聊天消息将在这里动态加载 -->
       <div class="message boyfriend">
+        <!-- 初始消息的头像和内容需要调整，使其符合新的结构 -->
         <img src="./avatar_boyfriend.png" class="message-avatar" alt="男友头像" id="initial-boyfriend-avatar-display">
         <div class="message-content">
-          <p class="message-text">宝贝，在干嘛呢，想我了吗？</p>
-          <button class="tts-button" onclick="speakText(this)">转语音</button>
+          <p class="message-text">你好，我是你的虚拟男友，有什么想和我聊的吗？</p>
         </div>
+        <button class="tts-button" onclick="speakText(this)">转语音</button>
       </div>
     </div>
 
@@ -382,7 +401,7 @@
 
     let boyfriend = JSON.parse(localStorage.getItem('boyfriend')) || {
       name: "虚拟男友",
-      avatar: DEFAULT_BOYFRIEND_AVAR
+      avatar: DEFAULT_BOYFRIEND_AVATAR
     };
 
     const chatMessages = document.getElementById("chat-messages");
@@ -427,14 +446,29 @@
       messageDiv.classList.add("message", sender === "me" ? "me" : "boyfriend");
 
       const avatarSrc = sender === "me" ? currentUser.avatar : boyfriend.avatar;
+      const avatarAlt = sender === 'me' ? currentUser.name : boyfriend.name;
 
-      messageDiv.innerHTML = `
-        <img src="${avatarSrc}" class="message-avatar" alt="${sender === 'me' ? currentUser.name : boyfriend.name}头像">
+      // 构建头像 HTML
+      const avatarHtml = `<img src="${avatarSrc}" class="message-avatar" alt="${avatarAlt}头像">`;
+
+      // 构建消息内容 HTML
+      const contentHtml = `
         <div class="message-content">
           <p class="message-text">${text}</p>
-          ${isBoyfriendMessage ? '<button class="tts-button" onclick="speakText(this)">转语音</button>' : ''}
         </div>
       `;
+
+      // 构建语音按钮 HTML (只为男友消息显示)
+      // 注意：这里 button 的 onclick 事件应该传递 this 给 speakText 函数
+      const ttsButtonHtml = isBoyfriendMessage ? '<button class="tts-button" onclick="speakText(this)">转语音</button>' : '';
+
+      // 根据发送者重新组织元素的顺序
+      if (sender === "me") {
+        messageDiv.innerHTML = contentHtml + avatarHtml; // 我的消息：内容在左，头像在右
+      } else {
+        messageDiv.innerHTML = avatarHtml + contentHtml + ttsButtonHtml; // 男友消息：头像在左，内容居中，按钮在右
+      }
+      
       chatMessages.appendChild(messageDiv);
       chatMessages.scrollTop = chatMessages.scrollHeight; // 滚动到底部
     }
@@ -470,7 +504,6 @@
         const data = await response.json();
         chatMessages.removeChild(loadingDiv); // 移除加载提示
         
-        // --- START OF MODIFICATION ---
         // 将LLM回复按换行符分割成多条消息
         const replies = data.reply.split('\n').filter(r => r.trim() !== ''); // 过滤空字符串
         
@@ -478,7 +511,6 @@
         for (const reply of replies) {
             addMessage(reply.trim(), "boyfriend", true); // LLM回复，可转语音
         }
-        // --- END OF MODIFICATION ---
 
       } catch (error) {
         console.error("发送消息失败:", error);
@@ -489,7 +521,15 @@
 
     // 文本转语音
     async function speakText(button) {
-      const messageContent = button.previousElementSibling.textContent; // 获取按钮前一个兄弟元素（消息文本）的内容
+      // 语音按钮的文本内容现在在 .message-content 下的 .message-text P标签中
+      const messageContentElement = button.previousElementSibling.querySelector('.message-text');
+      const messageContent = messageContentElement ? messageContentElement.textContent : ""; // 获取消息文本
+
+      if (!messageContent) {
+          console.warn("未找到可转语音的消息文本。");
+          return;
+      }
+
       button.disabled = true;
       button.textContent = "加载语音...";
 
@@ -578,7 +618,7 @@
         } else if (boyfriendAvatarUrlInput.value.trim()) {
             boyfriend.avatar = boyfriendAvatarUrlInput.value.trim();
         } else {
-            boyfriend.avatar = DEFAULT_BOYFRIEND_AVAR;
+            boyfriend.avatar = DEFAULT_BOYFRIEND_AVATAR;
         }
 
         localStorage.setItem('currentUser', JSON.stringify(currentUser));
