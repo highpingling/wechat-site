@@ -345,6 +345,23 @@ test: added harmless comment from VS Code
       <span class="right" onclick="openSettings()">设置</span>
     </div>
 
+    <!-- 操作工具栏：导入/导出/自动保存/记忆配置 -->
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #e6e6e6;background:#fafafa;">
+      <button id="import-btn">导入会话</button>
+      <button id="export-btn">导出会话</button>
+      <label style="display:flex;align-items:center;gap:6px;margin-left:8px;">
+        <input type="checkbox" id="autosave-toggle" /> 自动保存到文件
+      </label>
+      <label style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+        最近N条:
+        <select id="recent-n-select">
+          <option value="10">10</option>
+          <option value="25" selected>25</option>
+          <option value="50">50</option>
+        </select>
+      </label>
+    </div>
+
     <div class="chat-messages" id="chat-messages">
       <!-- 聊天消息将在这里动态加载 -->
       <div class="message boyfriend">
@@ -396,6 +413,7 @@ test: added harmless comment from VS Code
   </div>
 
   <audio id="player" preload="auto" style="display:none"></audio>
+  <script src="/static/chat.js" type="module"></script>
 
   <script>
     // 后端接口地址 - 请根据你的实际部署修改
@@ -554,6 +572,10 @@ test: added harmless comment from VS Code
 
 
       addMessage(userMessageForDisplay, "me"); // 聊天界面显示的是去除括号后的消息或原始消息
+      // 更新 ChatManager 状态
+      if (window.ChatManager && typeof window.ChatManager.onUserMessage === 'function') {
+        try { window.ChatManager.onUserMessage(messageForLLM); } catch(e){console.warn(e);} 
+      }
       messageInput.value = "";
 
       // 显示加载提示
@@ -586,6 +608,10 @@ test: added harmless comment from VS Code
         // 逐条添加消息到聊天界面
         for (const reply of replies) {
             addMessage(reply.trim(), "boyfriend", true); // LLM回复，可转语音
+            // 更新 ChatManager 的消息存储
+            if (window.ChatManager && Array.isArray(window.ChatManager.messages)) {
+              window.ChatManager.messages.push({ role: 'assistant', text: reply.trim(), ts: Date.now() });
+            }
         }
 
       } catch (error) {
@@ -773,6 +799,13 @@ test: added harmless comment from VS Code
     // 页面加载时加载一次设置，以更新所有界面元素
     document.addEventListener("DOMContentLoaded", () => {
         loadSettings();
+    // 初始化聊天模块（导入/导出、autosave 等）
+    if (window.ChatManager && typeof window.ChatManager.init === 'function') {
+      window.ChatManager.init({
+        chatMessagesEl: chatMessages,
+        addMessageFn: addMessage
+      });
+    }
         // 初始加载时，确保第一条消息的男友头像也是正确的
         const initialBoyfriendMessageAvatar = document.querySelector('.message.boyfriend .message-avatar');
         if (initialBoyfriendMessageAvatar) {
