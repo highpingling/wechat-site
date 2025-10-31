@@ -45,13 +45,14 @@ async function idbGet(store, key) {
 // Chat state
 const ChatManager = {
   messages: [], // {role:'me'|'assistant', text, ts}
-  memoryChunks: [], // {id, summary, createdAt}
+  memoryChunks: [], // {id, summary, createdAt, score?: number}
   recentN: 25,
   autosave: false,
   savedFileHandle: null, // FileSystemFileHandle (Chromium)
   messagesSinceLastSummarize: 0,
-  summarizeThreshold: 50,
+  summarizeThreshold: 30, // 改为 30 条触发总结
   maxMemoryChunks: 40,
+  lastSummarizeTime: 0, // 记录上次总结时间
   initOptions: {},
 
   async init(opts = {}) {
@@ -107,8 +108,8 @@ const ChatManager = {
     // periodic auto backup to IndexedDB
     setInterval(() => this.backupToIndexedDB(), 30_000); // every 30s
 
-    // schedule periodic summarize check
-    setInterval(() => this.maybeSummarizeByTime(), 60_000); // every minute
+    // schedule periodic summarize check (每3分钟检查一次)
+    setInterval(() => this.maybeSummarizeByTime(), 180_000);
 
     // beforeunload attempt to save
     window.addEventListener('beforeunload', (e) => {
@@ -210,6 +211,71 @@ const ChatManager = {
       } else {
         // try parse whole
         chats = JSON.parse(text);
+      }
+
+      // 如果导入的消息超过 recentN，立即进行批量总结
+      if (chats.length > this.recentN) {
+        const progress = document.createElement('div');
+        progress.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:20px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);z-index:10000;';
+        progress.innerHTML = '<div>正在处理历史消息...</div><div id="import-progress" style="margin-top:10px;color:#666;"></div>';
+        document.body.appendChild(progress);
+        
+        const updateProgress = (text) => {
+          const el = document.getElementById('import-progress');
+          if (el) el.textContent = text;
+        };
+
+        try {
+          // 保留最近的消息
+          const recentMessages = chats.slice(-this.recentN);
+          // 对早期消息分批总结（每30条一组）
+          const olderMessages = chats.slice(0, -this.recentN);
+          const batchSize = 30;
+          const batches = [];
+          
+          for (let i = 0; i < olderMessages.length; i += batchSize) {
+            const batch = olderMessages.slice(i, i + batchSize);
+            updateProgress(`正在总结第 ${i+1}-${Math.min(i+batchSize, olderMessages.length)} 条消息，共 ${olderMessages.length} 条`);
+            try {
+              const resp = await fetch('/api/summarize', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ messages: batch, target_token: 300 })
+              });
+              if (resp.ok) {
+                const data = await resp.json();
+                const summary = data.summary || `摘要(${batch.length}条): ` + batch.slice(-5).map(m=>m.text).join(' | ');
+                batches.push({ id: 'mc_' + Date.now() + '_' + i, summary, createdAt: Date.now() });
+              }
+            } catch (e) {
+              console.warn('batch summarize failed:', e);
+              // fallback: simple concat
+              const summary = `摘要(${batch.length}条): ` + batch.slice(-5).map(m=>m.text).join(' | ');
+              batches.push({ id: 'mc_' + Date.now() + '_' + i, summary, createdAt: Date.now() });
+            }
+            await new Promise(r => setTimeout(r, 100)); // 避免请求过快
+          }
+
+          // 更新状态
+          this.memoryChunks.push(...batches);
+          chats = recentMessages; // 只保留最近的消息
+          updateProgress(`完成！已保留最近 ${this.recentN} 条消息，${batches.length} 个历史摘要可被检索。`);
+          
+          // 清理进度条
+          setTimeout(() => {
+            if (progress.parentNode) {
+              progress.parentNode.removeChild(progress);
+            }
+          }, 3000);
+          
+        } catch (e) {
+          console.error('batch summarize failed:', e);
+          if (progress.parentNode) {
+            progress.parentNode.removeChild(progress);
+          }
+          alert('历史消息处理过程出错，将只保留最近的消息');
+          chats = chats.slice(-this.recentN);
+        }
       }
     } catch (e) {
       alert('无法解析文件，确保是由本系统或兼容格式导出的 .txt');
@@ -318,11 +384,17 @@ const ChatManager = {
   },
 
   async maybeSummarizeByTime() {
-    // called every minute
-    // if there are many messages since last summarize, trigger summarize
-    if (this.messagesSinceLastSummarize >= this.summarizeThreshold) {
+    const now = Date.now();
+    // 条件1：消息数量超过阈值
+    const shouldSummarizeByCount = this.messagesSinceLastSummarize >= this.summarizeThreshold;
+    // 条件2：距离上次总结超过3分钟且有新消息
+    const shouldSummarizeByTime = this.messagesSinceLastSummarize > 0 && 
+      (now - this.lastSummarizeTime) > 180_000;
+
+    if (shouldSummarizeByCount || shouldSummarizeByTime) {
       await this.summarizeOlderHistoryIfAny();
       this.messagesSinceLastSummarize = 0;
+      this.lastSummarizeTime = now;
     }
   },
 
