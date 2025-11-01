@@ -46,10 +46,10 @@ async function idbGet(store, key) {
 }
 
 // Chat state
-import MemorySystem from './memory_system.js';
 
 const ChatManager = {
   messages: [], // {role:'me'|'assistant', text, ts}
+  memoryChunks: [], // 历史摘要记忆块
   memorySystem: null, // 分层记忆系统实例
   recentN: 25,
   autosave: false,
@@ -457,43 +457,31 @@ const ChatManager = {
 
   // 更新调试面板信息
   _updateDebugPanel() {
-    // 更新消息统计
     try {
-      const activeMessages = document.getElementById('debug-active-messages');
-      const memoryChunks = document.getElementById('debug-memory-chunks');
-      const tokens = document.getElementById('debug-tokens');
-      const usedChunks = document.getElementById('debug-used-chunks');
-      
-      if (activeMessages) activeMessages.textContent = this.messages?.length || 0;
-      if (memoryChunks) memoryChunks.textContent = this.memoryChunks?.length || 0;
-      
-      // 更新最近一次API调用信息
+      // DOM 元素
+      const activeEl = document.getElementById('debug-active-messages');
+      const memoryEl = document.getElementById('debug-memory-chunks');
+      const tokensEl = document.getElementById('debug-tokens');
+      const usedChunksEl = document.getElementById('debug-used-chunks');
+
+      // 消息与记忆块数量
+      if (activeEl) activeEl.textContent = this.messages?.length || 0;
+      if (memoryEl) memoryEl.textContent = this.memoryChunks?.length || 0;
+
+      // 最近一次发送给后端的负载，估算 tokens 与使用的记忆块数量
       if (this._lastPayload) {
         const tokenEstimate = Math.ceil(JSON.stringify(this._lastPayload).length / 4);
-        if (tokens) tokens.textContent = tokenEstimate;
-        if (usedChunks) usedChunks.textContent = this._lastPayload.memory_chunks?.length || 0;
+        if (tokensEl) tokensEl.textContent = tokenEstimate;
+        if (usedChunksEl) usedChunksEl.textContent = (this._lastPayload.memory_chunks || []).length;
       }
-      
-      // 在Console中也输出当前状态
-      console.log(`调试面板更新 - 活跃消息: ${this.messages?.length || 0}, 记忆块: ${this.memoryChunks?.length || 0}`);
 
-    // 更新最近一次API调用信息
-    const tokens = document.getElementById('debug-tokens');
-    const usedChunks = document.getElementById('debug-used-chunks');
-    
-    if (this._lastPayload) {
-      // 估算token数（粗略估算：每个英文单词4个字符，每个中文字符算1个token）
-      const text = JSON.stringify(this._lastPayload);
-      const tokenEstimate = Math.ceil(text.length / 4);
-      if (tokens) tokens.textContent = tokenEstimate;
-      if (usedChunks) usedChunks.textContent = (this._lastPayload.memory_chunks || []).length;
-    }
-
-    // 自动隐藏开关按钮
-    const toggle = document.getElementById('debug-toggle');
-    const panel = document.getElementById('debug-panel');
-    if (toggle && panel) {
-      toggle.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+      // 切换按钮在面板显示时隐藏，面板隐藏时显示
+      const toggle = document.getElementById('debug-toggle');
+      const panel = document.getElementById('debug-panel');
+      if (toggle && panel) toggle.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+    } catch (e) {
+      // 安全兜底，避免调试面板影响主流程
+      // console.warn('update debug panel failed', e);
     }
   },
 
