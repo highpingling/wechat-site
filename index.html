@@ -1,5 +1,4 @@
-test: added harmless comment from VS Code
-<!-- test: added from GitHub web -->
+<!-- cleaned header comments -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -586,13 +585,37 @@ test: added harmless comment from VS Code
       chatMessages.scrollTop = chatMessages.scrollHeight;
 
       try {
+        // 如果 ChatManager 可用，构建 richer payload：包括最近消息与 memory chunks
+        let structured = null;
+        if (window.ChatManager && typeof window.ChatManager.preparePayloadForBackend === 'function') {
+          try {
+            structured = await window.ChatManager.preparePayloadForBackend({ text: messageForLLM });
+          } catch (e) {
+            console.warn('preparePayloadForBackend failed', e);
+            structured = null;
+          }
+        }
+
+        // Fallback / compatibility: attach human-readable memory + recent context into the message text
+        let compositeMessage = messageForLLM;
+        try {
+          if (structured) {
+            const memText = (structured.memory_chunks || []).map(mc => `历史摘要：${mc.summary}`).join('\n\n');
+            const recentText = (structured.recent_messages || []).map(m => `${m.role === 'user' ? currentUser.name : boyfriend.name}: ${m.text}`).join('\n');
+            compositeMessage = `${memText}\n\n最近对话（仅最近 ${structured.meta && structured.meta.recentN ? structured.meta.recentN : ''} 条）：\n${recentText}\n\n用户输入：\n${messageForLLM}`;
+          }
+        } catch (e) {
+          console.warn('build compositeMessage failed', e);
+          compositeMessage = messageForLLM;
+        }
+
         const response = await fetch(BACKEND_CHAT_URL, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          // 这里我们将处理后的 messageForLLM 发送给后端
-          body: JSON.stringify({ message: messageForLLM, user_name: currentUser.name, boyfriend_name: boyfriend.name }),
+          // 兼容后端：同时发送可读的 message 字段和结构化的上下文（如果有）
+          body: JSON.stringify({ message: compositeMessage, structured_context: structured, user_name: currentUser.name, boyfriend_name: boyfriend.name }),
         });
 
         if (!response.ok) {
