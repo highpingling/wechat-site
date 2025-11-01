@@ -1,10 +1,13 @@
 // chat.js
-// 前端聊天管理：导入/导出、File System Access 自动保存（Chromium/Brave）、IndexedDB 备份、记忆 chunk 管理与 /api/summarize 占位调用
-// 设计目标：最小可行实现（Option A）
+// 前端聊天管理：支持长期记忆系统、多层记忆存储、自动压缩与智能检索
+// 设计目标：稳定可靠的长期对话记忆系统
 
-const DB_NAME = 'wechat_chat_db_v1';
+import { MemorySystem } from './memorySystem.js';
+
+const DB_NAME = 'wechat_chat_db_v2'; // 升级数据库版本以支持新的记忆系统
 const HANDLE_STORE = 'file_handles';
 const BACKUP_STORE = 'backups';
+const MEMORY_STORE = 'memories'; // 新增记忆存储
 
 // 简单 IndexedDB helper
 function openDB() {
@@ -43,9 +46,11 @@ async function idbGet(store, key) {
 }
 
 // Chat state
+import MemorySystem from './memory_system.js';
+
 const ChatManager = {
   messages: [], // {role:'me'|'assistant', text, ts}
-  memoryChunks: [], // {id, summary, createdAt, score?: number}
+  memorySystem: null, // 分层记忆系统实例
   recentN: 25,
   autosave: false,
   savedFileHandle: null, // FileSystemFileHandle (Chromium)
