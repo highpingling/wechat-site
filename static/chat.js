@@ -383,6 +383,37 @@ const ChatManager = {
     return header + '\n----CHAT-JSON----\n' + content;
   },
 
+  // 更新调试面板信息
+  _updateDebugPanel() {
+    if (!document) return; // 如果在非浏览器环境，直接返回
+    
+    // 更新消息统计
+    const activeMessages = document.getElementById('debug-active-messages');
+    if (activeMessages) activeMessages.textContent = this.messages.length;
+    
+    const memoryChunks = document.getElementById('debug-memory-chunks');
+    if (memoryChunks) memoryChunks.textContent = this.memoryChunks.length;
+
+    // 更新最近一次API调用信息
+    const tokens = document.getElementById('debug-tokens');
+    const usedChunks = document.getElementById('debug-used-chunks');
+    
+    if (this._lastPayload) {
+      // 估算token数（粗略估算：每个英文单词4个字符，每个中文字符算1个token）
+      const text = JSON.stringify(this._lastPayload);
+      const tokenEstimate = Math.ceil(text.length / 4);
+      if (tokens) tokens.textContent = tokenEstimate;
+      if (usedChunks) usedChunks.textContent = (this._lastPayload.memory_chunks || []).length;
+    }
+
+    // 自动隐藏开关按钮
+    const toggle = document.getElementById('debug-toggle');
+    const panel = document.getElementById('debug-panel');
+    if (toggle && panel) {
+      toggle.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+    }
+  },
+
   async maybeSummarizeByTime() {
     const now = Date.now();
     // 条件1：消息数量超过阈值
@@ -485,6 +516,9 @@ const ChatManager = {
       user_message: userMessage,
       meta: {recentN: this.recentN}
     };
+    // 保存最后一次payload用于调试显示
+    this._lastPayload = payload;
+    this._updateDebugPanel();
     return payload;
   },
 
@@ -495,6 +529,8 @@ const ChatManager = {
     this.messagesSinceLastSummarize += 1;
     // backup
     this.backupToIndexedDB();
+    // 更新调试面板
+    this._updateDebugPanel();
   }
 };
 

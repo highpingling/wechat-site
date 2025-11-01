@@ -411,6 +411,35 @@
     </div>
   </div>
 
+  <!-- 调试面板（默认隐藏） -->
+  <div id="debug-panel" style="display:none;position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.75);color:#fff;padding:12px;border-radius:8px;font-size:12px;z-index:1000;min-width:200px;box-shadow:0 2px 8px rgba(0,0,0,0.2);">
+    <div style="margin-bottom:8px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;">
+      <span>调试信息</span>
+      <span onclick="document.getElementById('debug-panel').style.display='none'" style="cursor:pointer;padding:0 4px;">&times;</span>
+    </div>
+    <div style="margin-bottom:6px;">
+      消息统计
+      <div style="padding-left:8px;color:#aaa;">
+        <div>├─ 活跃消息: <span id="debug-active-messages">0</span>条</div>
+        <div>└─ 记忆块: <span id="debug-memory-chunks">0</span>个</div>
+      </div>
+    </div>
+    <div style="margin-bottom:6px;">
+      最近API调用
+      <div style="padding-left:8px;color:#aaa;">
+        <div>├─ 发送tokens: <span id="debug-tokens">0</span></div>
+        <div>└─ 使用记忆块: <span id="debug-used-chunks">0</span>个</div>
+      </div>
+    </div>
+    <button onclick="window.ChatManager?.summarizeOlderHistoryIfAny()" style="margin-top:8px;width:100%;padding:4px;background:#666;border:none;color:white;border-radius:4px;cursor:pointer;">强制生成记忆块</button>
+  </div>
+
+  <!-- 调试面板开关（固定在右下角） -->
+  <div id="debug-toggle" onclick="document.getElementById('debug-panel').style.display='block'" 
+    style="position:fixed;bottom:10px;right:10px;background:#666;color:white;width:24px;height:24px;border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;z-index:999;">
+    D
+  </div>
+
   <audio id="player" preload="auto" style="display:none"></audio>
   <script src="/static/chat.js" type="module"></script>
 
