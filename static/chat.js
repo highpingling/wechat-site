@@ -62,6 +62,8 @@ const ChatManager = {
 
   async init(opts = {}) {
     this.initOptions = opts;
+    // 初始化记忆系统
+    this.memorySystem = new MemorySystem();
     // bind UI
     this.chatMessagesEl = opts.chatMessagesEl;
     this.addMessageFn = opts.addMessageFn; // function to render message to UI
@@ -220,11 +222,11 @@ const ChatManager = {
         chats = JSON.parse(text);
       }
 
-      // 如果导入的消息超过 recentN，立即进行批量总结
+      // 如果导入的消息超过 recentN，使用本地压缩（不调用API，节省token）
       if (chats.length > this.recentN) {
         const progress = document.createElement('div');
         progress.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:20px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,0.1);z-index:10000;';
-        progress.innerHTML = '<div>正在处理历史消息...</div><div id="import-progress" style="margin-top:10px;color:#666;"></div>';
+        progress.innerHTML = '<div>正在处理历史消息（本地压缩，不消耗token）...</div><div id="import-progress" style="margin-top:10px;color:#666;"></div>';
         document.body.appendChild(progress);
         
         const updateProgress = (text) => {
@@ -235,38 +237,31 @@ const ChatManager = {
         try {
           // 保留最近的消息
           const recentMessages = chats.slice(-this.recentN);
-          // 对早期消息分批总结（每30条一组）
+          // 对早期消息分批压缩（每30条一组）- 使用本地方法
           const olderMessages = chats.slice(0, -this.recentN);
           const batchSize = 30;
           const batches = [];
           
           for (let i = 0; i < olderMessages.length; i += batchSize) {
             const batch = olderMessages.slice(i, i + batchSize);
-            updateProgress(`正在总结第 ${i+1}-${Math.min(i+batchSize, olderMessages.length)} 条消息，共 ${olderMessages.length} 条`);
-            try {
-              const resp = await fetch('/api/summarize', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ messages: batch, target_token: 300 })
-              });
-              if (resp.ok) {
-                const data = await resp.json();
-                const summary = data.summary || `摘要(${batch.length}条): ` + batch.slice(-5).map(m=>m.text).join(' | ');
-                batches.push({ id: 'mc_' + Date.now() + '_' + i, summary, createdAt: Date.now() });
-              }
-            } catch (e) {
-              console.warn('batch summarize failed:', e);
-              // fallback: simple concat
-              const summary = `摘要(${batch.length}条): ` + batch.slice(-5).map(m=>m.text).join(' | ');
-              batches.push({ id: 'mc_' + Date.now() + '_' + i, summary, createdAt: Date.now() });
-            }
-            await new Promise(r => setTimeout(r, 100)); // 避免请求过快
+            updateProgress(`正在本地压缩第 ${i+1}-${Math.min(i+batchSize, olderMessages.length)} 条消息，共 ${olderMessages.length} 条`);
+            
+            // 本地压缩逻辑：提取关键信息，不调用API
+            const summary = this._createLocalSummary(batch, i);
+            batches.push({ 
+              id: 'mc_local_' + Date.now() + '_' + i, 
+              summary, 
+              createdAt: Date.now(),
+              isLocalCompressed: true // 标记为本地压缩
+            });
+            
+            await new Promise(r => setTimeout(r, 50)); // 短暂延迟，避免阻塞UI
           }
 
           // 更新状态
           this.memoryChunks.push(...batches);
           chats = recentMessages; // 只保留最近的消息
-          updateProgress(`完成！已保留最近 ${this.recentN} 条消息，${batches.length} 个历史摘要可被检索。`);
+          updateProgress(`完成！已保留最近 ${this.recentN} 条消息，${batches.length} 个历史摘要（本地压缩）。`);
           
           // 清理进度条
           setTimeout(() => {
@@ -276,7 +271,7 @@ const ChatManager = {
           }, 3000);
           
         } catch (e) {
-          console.error('batch summarize failed:', e);
+          console.error('batch compress failed:', e);
           if (progress.parentNode) {
             progress.parentNode.removeChild(progress);
           }
@@ -348,6 +343,46 @@ const ChatManager = {
       }
     };
     input.click();
+  },
+
+  // 本地压缩方法：提取关键信息，不调用API
+  _createLocalSummary(messages, batchIndex) {
+    const startIdx = batchIndex + 1;
+    const endIdx = batchIndex + messages.length;
+    
+    // 提取关键信息
+    const userMessages = messages.filter(m => m.role === 'user').map(m => m.text);
+    const assistantMessages = messages.filter(m => (m.role === 'assistant' || m.role === 'boyfriend')).map(m => m.text);
+    
+    // 提取关键词（去重）
+    const extractKeywords = (texts) => {
+      const allText = texts.join(' ');
+      const zhWords = (allText.match(/[\u4e00-\u9fa5]{2,}/g) || []);
+      const enWords = (allText.match(/\b[A-Za-z]{3,}\b/g) || []);
+      return [...new Set([...zhWords, ...enWords])].slice(0, 20); // 最多20个关键词
+    };
+    
+    const keywords = extractKeywords([...userMessages, ...assistantMessages]);
+    
+    // 构建摘要
+    let summary = `[历史对话 ${startIdx}-${endIdx}]\n`;
+    summary += `消息数：${messages.length}条\n`;
+    summary += `关键词：${keywords.join('、')}\n`;
+    summary += `\n对话片段：\n`;
+    
+    // 保留前3条和后3条消息作为上下文
+    const sampleMessages = [
+      ...messages.slice(0, 3),
+      ...messages.slice(-3)
+    ];
+    
+    summary += sampleMessages.map(m => {
+      const role = m.role === 'user' ? '我' : '男友';
+      const text = m.text.length > 50 ? m.text.slice(0, 50) + '...' : m.text;
+      return `${role}: ${text}`;
+    }).join('\n');
+    
+    return summary;
   },
 
   async backupToIndexedDB() {
@@ -574,10 +609,43 @@ const ChatManager = {
     const m = { role: 'user', text, ts: Date.now() };
     this.messages.push(m);
     this.messagesSinceLastSummarize += 1;
+
+    // 如果记忆系统存在，添加到记忆
+    if (this.memorySystem) {
+      this.memorySystem.addMemory({
+        type: 'message',
+        content: m,
+        summary: text,
+        ts: Date.now()
+      });
+    }
+
     // backup
     this.backupToIndexedDB();
     // 更新调试面板
     this._updateDebugPanel();
+  },
+
+  // 查看记忆状态
+  getMemoryStats() {
+    if (!this.memorySystem) {
+      return { 
+        shortTerm: 0,
+        mediumTerm: 0,
+        longTerm: 0,
+        error: '记忆系统未初始化'
+      };
+    }
+    return this.memorySystem.getStats();
+  },
+
+  // 搜索相关记忆
+  async searchMemories(query) {
+    if (!this.memorySystem) {
+      console.warn('记忆系统未初始化');
+      return [];
+    }
+    return await this.memorySystem.searchMemories(query);
   }
 };
 
