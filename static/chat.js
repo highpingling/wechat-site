@@ -60,6 +60,8 @@ const ChatManager = {
     // bind UI
     this.chatMessagesEl = opts.chatMessagesEl;
     this.addMessageFn = opts.addMessageFn; // function to render message to UI
+    // 初始化调试面板更新
+    this._initDebugPanel();
     // load config from localStorage
     this.recentN = parseInt(localStorage.getItem('recentN') || '25', 10);
     this.autosave = localStorage.getItem('autosave') === 'true';
@@ -383,16 +385,44 @@ const ChatManager = {
     return header + '\n----CHAT-JSON----\n' + content;
   },
 
+  // 初始化调试面板
+  _initDebugPanel() {
+    // 确保调试面板元素存在
+    const panel = document.getElementById('debug-panel');
+    const toggle = document.getElementById('debug-toggle');
+    if (!panel || !toggle) {
+      console.warn('调试面板元素未找到');
+      return;
+    }
+
+    // 设置自动更新（每秒）
+    setInterval(() => this._updateDebugPanel(), 1000);
+    
+    // 初次更新
+    this._updateDebugPanel();
+  },
+
   // 更新调试面板信息
   _updateDebugPanel() {
-    if (!document) return; // 如果在非浏览器环境，直接返回
-    
     // 更新消息统计
-    const activeMessages = document.getElementById('debug-active-messages');
-    if (activeMessages) activeMessages.textContent = this.messages.length;
-    
-    const memoryChunks = document.getElementById('debug-memory-chunks');
-    if (memoryChunks) memoryChunks.textContent = this.memoryChunks.length;
+    try {
+      const activeMessages = document.getElementById('debug-active-messages');
+      const memoryChunks = document.getElementById('debug-memory-chunks');
+      const tokens = document.getElementById('debug-tokens');
+      const usedChunks = document.getElementById('debug-used-chunks');
+      
+      if (activeMessages) activeMessages.textContent = this.messages?.length || 0;
+      if (memoryChunks) memoryChunks.textContent = this.memoryChunks?.length || 0;
+      
+      // 更新最近一次API调用信息
+      if (this._lastPayload) {
+        const tokenEstimate = Math.ceil(JSON.stringify(this._lastPayload).length / 4);
+        if (tokens) tokens.textContent = tokenEstimate;
+        if (usedChunks) usedChunks.textContent = this._lastPayload.memory_chunks?.length || 0;
+      }
+      
+      // 在Console中也输出当前状态
+      console.log(`调试面板更新 - 活跃消息: ${this.messages?.length || 0}, 记忆块: ${this.memoryChunks?.length || 0}`);
 
     // 更新最近一次API调用信息
     const tokens = document.getElementById('debug-tokens');
@@ -430,37 +460,49 @@ const ChatManager = {
   },
 
   async summarizeOlderHistoryIfAny() {
-    // find messages older than recentN
-    if (this.messages.length <= this.recentN) return;
+    console.log('开始检查是否需要生成记忆块...');
+    console.log(`当前消息数: ${this.messages.length}`);
+    console.log(`保留最新消息数: ${this.recentN}`);
+    
+    // 检查是否有需要总结的旧消息
+    if (this.messages.length <= this.recentN) {
+      console.log(`消息数(${this.messages.length})未超过${this.recentN}条，无需生成记忆块`);
+      return;
+    }
     const older = this.messages.slice(0, this.messages.length - this.recentN);
     if (!older.length) return;
-    // placeholder: call backend /api/summarize with older messages
-    try {
-      const resp = await fetch('/api/summarize', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: older.map(m => ({role: m.role, text: m.text, ts: m.ts})), target_token: 300 })
+
+    console.log(`将处理${older.length}条旧消息，生成记忆块`);
+
+    // 每30条消息生成一个记忆块
+    const batchSize = 30;
+    for (let i = 0; i < older.length; i += batchSize) {
+      const batch = older.slice(i, Math.min(i + batchSize, older.length));
+      const summaryText = `历史对话 ${i + 1}-${i + batch.length}:\n` +
+        batch.map(m => `${m.role === 'user' ? '我' : '男友'}: ${m.text}`).join('\n');
+      
+      this.memoryChunks.push({
+        id: 'mc_' + Date.now() + '_' + i,
+        summary: summaryText,
+        createdAt: Date.now()
       });
-      if (resp.ok) {
-        const data = await resp.json();
-        const summaryText = data.summary || data.result || (`摘要(${older.length}条): ` + older.slice(-10).map(m=>m.text).join(' | '));
-        // push memory chunk
-        this.memoryChunks.push({ id: 'mc_' + Date.now(), summary: summaryText, createdAt: Date.now() });
-        // remove older messages from main timeline (we keep recentN)
-        this.messages = this.messages.slice(this.messages.length - this.recentN);
-        // cap memory chunks
-        await this.capMemoryChunks();
-      } else {
-        console.warn('summarize endpoint returned', resp.status);
-      }
-    } catch (e) {
-      console.warn('summarize failed (placeholder)', e);
-      // fallback: create simple summary from first/last
-      const summaryText = `自动摘要(${older.length}条)：` + older.slice(-10).map(m=>m.text).join(' | ');
-      this.memoryChunks.push({ id: 'mc_' + Date.now(), summary: summaryText, createdAt: Date.now() });
-      this.messages = this.messages.slice(this.messages.length - this.recentN);
+      
+      console.log(`已生成第 ${Math.floor(i/batchSize) + 1} 个记忆块，包含消息 ${i + 1} 至 ${i + batch.length}`);
     }
-    // persist backup
+    
+    // 只保留最近的消息
+    this.messages = this.messages.slice(this.messages.length - this.recentN);
+    
+    // 保存到 IndexedDB
     await this.backupToIndexedDB();
+    
+    if (typeof this._updateDebugPanel === 'function') {
+      this._updateDebugPanel();
+    }
+
+    console.log('完成！');
+    console.log(`现在有 ${this.messages.length} 条活跃消息`);
+    console.log(`生成了 ${this.memoryChunks.length} 个记忆块`);
   },
 
   async capMemoryChunks() {
