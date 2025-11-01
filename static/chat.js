@@ -181,12 +181,25 @@ const ChatManager = {
       if (!file) return alert('请先选择一个 .txt 文件');
       const imported = await this.importChatFromFile(file);
       if (imported) {
-        // restore messages to UI
+        // 注意：importChatFromFile 已经处理了压缩和裁剪
+        // imported.chats 已经是最近的 recentN 条消息
+        // 记忆块已经在 importChatFromFile 中添加到 this.memoryChunks
         this.messages = imported.chats.map(c => ({ role: c.role === 'assistant' || c.role === 'boyfriend' ? 'assistant' : 'user', text: c.text, ts: c.ts || Date.now() }));
         this.renderAllMessages();
-        // after importing, optionally call summarize for older history (placeholder)
-        await this.summarizeOlderHistoryIfAny();
-        alert('导入成功');
+        
+        // 显示导入结果
+        const summary = `导入成功！\n活跃消息：${this.messages.length}条\n记忆块：${this.memoryChunks.length}个`;
+        alert(summary);
+        console.log('📊 导入统计:', {
+          活跃消息: this.messages.length,
+          记忆块: this.memoryChunks.length,
+          记忆块详情: this.memoryChunks.map(mc => ({
+            id: mc.id,
+            本地压缩: mc.isLocalCompressed || false,
+            摘要长度: mc.summary.length
+          }))
+        });
+        
         document.body.removeChild(modal);
       }
     });
