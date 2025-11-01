@@ -1,5 +1,4 @@
-test: added harmless comment from VS Code
-<!-- test: added from GitHub web -->
+<!-- cleaned header comments -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -345,6 +344,23 @@ test: added harmless comment from VS Code
       <span class="right" onclick="openSettings()">设置</span>
     </div>
 
+    <!-- 操作工具栏：导入/导出/自动保存/记忆配置 -->
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #e6e6e6;background:#fafafa;">
+      <button id="import-btn">导入会话</button>
+      <button id="export-btn">导出会话</button>
+      <label style="display:flex;align-items:center;gap:6px;margin-left:8px;">
+        <input type="checkbox" id="autosave-toggle" /> 自动保存到文件
+      </label>
+      <label style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+        最近N条:
+        <select id="recent-n-select">
+          <option value="10">10</option>
+          <option value="25" selected>25</option>
+          <option value="50">50</option>
+        </select>
+      </label>
+    </div>
+
     <div class="chat-messages" id="chat-messages">
       <!-- 聊天消息将在这里动态加载 -->
       <div class="message boyfriend">
@@ -395,7 +411,37 @@ test: added harmless comment from VS Code
     </div>
   </div>
 
+  <!-- 调试面板（默认隐藏） -->
+  <div id="debug-panel" style="display:none;position:fixed;bottom:10px;right:10px;background:rgba(0,0,0,0.75);color:#fff;padding:12px;border-radius:8px;font-size:12px;z-index:1000;min-width:200px;box-shadow:0 2px 8px rgba(0,0,0,0.2);">
+    <div style="margin-bottom:8px;font-weight:bold;display:flex;justify-content:space-between;align-items:center;">
+      <span>调试信息</span>
+      <span onclick="document.getElementById('debug-panel').style.display='none'" style="cursor:pointer;padding:0 4px;">&times;</span>
+    </div>
+    <div style="margin-bottom:6px;">
+      消息统计
+      <div style="padding-left:8px;color:#aaa;">
+        <div>├─ 活跃消息: <span id="debug-active-messages">0</span>条</div>
+        <div>└─ 记忆块: <span id="debug-memory-chunks">0</span>个</div>
+      </div>
+    </div>
+    <div style="margin-bottom:6px;">
+      最近API调用
+      <div style="padding-left:8px;color:#aaa;">
+        <div>├─ 发送tokens: <span id="debug-tokens">0</span></div>
+        <div>└─ 使用记忆块: <span id="debug-used-chunks">0</span>个</div>
+      </div>
+    </div>
+    <button onclick="window.ChatManager?.summarizeOlderHistoryIfAny()" style="margin-top:8px;width:100%;padding:4px;background:#666;border:none;color:white;border-radius:4px;cursor:pointer;">强制生成记忆块</button>
+  </div>
+
+  <!-- 调试面板开关（固定在右下角） -->
+  <div id="debug-toggle" onclick="document.getElementById('debug-panel').style.display='block'" 
+    style="position:fixed;bottom:10px;right:10px;background:#666;color:white;width:24px;height:24px;border-radius:12px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;z-index:999;">
+    D
+  </div>
+
   <audio id="player" preload="auto" style="display:none"></audio>
+  <script src="/static/chat.js" type="module"></script>
 
   <script>
     // 后端接口地址 - 请根据你的实际部署修改
@@ -554,6 +600,10 @@ test: added harmless comment from VS Code
 
 
       addMessage(userMessageForDisplay, "me"); // 聊天界面显示的是去除括号后的消息或原始消息
+      // 更新 ChatManager 状态
+      if (window.ChatManager && typeof window.ChatManager.onUserMessage === 'function') {
+        try { window.ChatManager.onUserMessage(messageForLLM); } catch(e){console.warn(e);} 
+      }
       messageInput.value = "";
 
       // 显示加载提示
@@ -564,13 +614,37 @@ test: added harmless comment from VS Code
       chatMessages.scrollTop = chatMessages.scrollHeight;
 
       try {
+        // 如果 ChatManager 可用，构建 richer payload：包括最近消息与 memory chunks
+        let structured = null;
+        if (window.ChatManager && typeof window.ChatManager.preparePayloadForBackend === 'function') {
+          try {
+            structured = await window.ChatManager.preparePayloadForBackend({ text: messageForLLM });
+          } catch (e) {
+            console.warn('preparePayloadForBackend failed', e);
+            structured = null;
+          }
+        }
+
+        // Fallback / compatibility: attach human-readable memory + recent context into the message text
+        let compositeMessage = messageForLLM;
+        try {
+          if (structured) {
+            const memText = (structured.memory_chunks || []).map(mc => `历史摘要：${mc.summary}`).join('\n\n');
+            const recentText = (structured.recent_messages || []).map(m => `${m.role === 'user' ? currentUser.name : boyfriend.name}: ${m.text}`).join('\n');
+            compositeMessage = `${memText}\n\n最近对话（仅最近 ${structured.meta && structured.meta.recentN ? structured.meta.recentN : ''} 条）：\n${recentText}\n\n用户输入：\n${messageForLLM}`;
+          }
+        } catch (e) {
+          console.warn('build compositeMessage failed', e);
+          compositeMessage = messageForLLM;
+        }
+
         const response = await fetch(BACKEND_CHAT_URL, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          // 这里我们将处理后的 messageForLLM 发送给后端
-          body: JSON.stringify({ message: messageForLLM, user_name: currentUser.name, boyfriend_name: boyfriend.name }),
+          // 兼容后端：同时发送可读的 message 字段和结构化的上下文（如果有）
+          body: JSON.stringify({ message: compositeMessage, structured_context: structured, user_name: currentUser.name, boyfriend_name: boyfriend.name }),
         });
 
         if (!response.ok) {
@@ -586,6 +660,10 @@ test: added harmless comment from VS Code
         // 逐条添加消息到聊天界面
         for (const reply of replies) {
             addMessage(reply.trim(), "boyfriend", true); // LLM回复，可转语音
+            // 更新 ChatManager 的消息存储
+            if (window.ChatManager && Array.isArray(window.ChatManager.messages)) {
+              window.ChatManager.messages.push({ role: 'assistant', text: reply.trim(), ts: Date.now() });
+            }
         }
 
       } catch (error) {
@@ -773,6 +851,13 @@ test: added harmless comment from VS Code
     // 页面加载时加载一次设置，以更新所有界面元素
     document.addEventListener("DOMContentLoaded", () => {
         loadSettings();
+    // 初始化聊天模块（导入/导出、autosave 等）
+    if (window.ChatManager && typeof window.ChatManager.init === 'function') {
+      window.ChatManager.init({
+        chatMessagesEl: chatMessages,
+        addMessageFn: addMessage
+      });
+    }
         // 初始加载时，确保第一条消息的男友头像也是正确的
         const initialBoyfriendMessageAvatar = document.querySelector('.message.boyfriend .message-avatar');
         if (initialBoyfriendMessageAvatar) {
