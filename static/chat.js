@@ -705,6 +705,22 @@ const ChatManager = {
     this._updateDebugPanel();
   },
 
+  // 同步助手回复到状态（用于确保立即备份，避免刷新丢失最后一轮回复）
+  onAssistantMessage(text) {
+    const m = { role: 'assistant', text, ts: Date.now() };
+    this.messages.push(m);
+
+    if (this.memorySystem) {
+      try {
+        this.memorySystem.addMemory({ type: 'message', content: m, summary: text, ts: m.ts });
+      } catch (e) { /* noop */ }
+    }
+
+    // 立即备份，防止用户看到回复后立刻刷新导致丢失
+    this.backupToIndexedDB();
+    this._updateDebugPanel();
+  },
+
   // 查看记忆状态
   getMemoryStats() {
     if (!this.memorySystem) {

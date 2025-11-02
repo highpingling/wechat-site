@@ -656,12 +656,12 @@
         // 将LLM回复按换行符分割成多条消息
         const replies = data.reply.split('\n').filter(r => r.trim() !== ''); // 过滤空字符串
         
-        // 逐条添加消息到聊天界面
+        // 逐条添加消息到聊天界面，并同步写入 ChatManager（立即备份）
         for (const reply of replies) {
-            addMessage(reply.trim(), "boyfriend", true); // LLM回复，可转语音
-            // 更新 ChatManager 的消息存储
-            if (window.ChatManager && Array.isArray(window.ChatManager.messages)) {
-              window.ChatManager.messages.push({ role: 'assistant', text: reply.trim(), ts: Date.now() });
+            const txt = reply.trim();
+            addMessage(txt, "boyfriend", true); // LLM回复，可转语音
+            if (window.ChatManager && typeof window.ChatManager.onAssistantMessage === 'function') {
+              try { window.ChatManager.onAssistantMessage(txt); } catch(e){ console.warn(e); }
             }
         }
 
@@ -669,6 +669,9 @@
         console.error("发送消息失败:", error);
         chatMessages.removeChild(loadingDiv); // 移除加载提示
         addMessage("我暂时无法回答你的问题，请稍后再试。", "boyfriend");
+        if (window.ChatManager && typeof window.ChatManager.onAssistantMessage === 'function') {
+          try { window.ChatManager.onAssistantMessage("我暂时无法回答你的问题，请稍后再试。"); } catch(e){ console.warn(e); }
+        }
       }
     }
 
