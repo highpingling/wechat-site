@@ -161,6 +161,9 @@ const ChatManager = {
     const importBtn = document.createElement('button');
     importBtn.textContent = '导入所选文件并恢复';
     importBtn.style.marginRight = '8px';
+    const restoreBtn = document.createElement('button');
+    restoreBtn.textContent = '恢复上次会话';
+    restoreBtn.style.marginRight = '8px';
     const newBtn = document.createElement('button');
     newBtn.textContent = '开始新会话';
     const note = document.createElement('div');
@@ -171,10 +174,53 @@ const ChatManager = {
 
     box.appendChild(importInput);
     box.appendChild(importBtn);
+    box.appendChild(restoreBtn);
     box.appendChild(newBtn);
     box.appendChild(note);
     modal.appendChild(box);
     document.body.appendChild(modal);
+
+    // 初始化恢复按钮状态
+    try {
+      const backup = await idbGet(BACKUP_STORE, 'latest_session');
+      if (!backup || !Array.isArray(backup.messages) || backup.messages.length === 0) {
+        restoreBtn.disabled = true;
+        restoreBtn.textContent = '恢复上次会话（无可用）';
+      }
+    } catch (e) {
+      restoreBtn.disabled = true;
+      restoreBtn.textContent = '恢复上次会话（不可用）';
+    }
+
+    // 点击恢复：从 IndexedDB 读取最近快照
+    restoreBtn.addEventListener('click', async () => {
+      try {
+        const backup = await idbGet(BACKUP_STORE, 'latest_session');
+        if (!backup || !Array.isArray(backup.messages)) {
+          alert('没有可恢复的会话（本地未找到备份）');
+          return;
+        }
+        this.messages = (backup.messages || []).map(m => ({
+          role: m.role === 'assistant' || m.role === 'boyfriend' ? 'assistant' : 'user',
+          text: m.text,
+          ts: m.ts || Date.now()
+        }));
+        this.memoryChunks = Array.isArray(backup.memoryChunks) ? backup.memoryChunks : [];
+        this.renderAllMessages();
+        // 恢复后自动整理一次历史：保留最近 recentN，其余折叠为记忆块，并保存备份
+        try {
+          await this.summarizeOlderHistoryIfAny();
+        } catch (err) {
+          console.warn('auto summarize after restore failed', err);
+        }
+        if (typeof this._updateDebugPanel === 'function') this._updateDebugPanel();
+        alert(`已恢复上次会话\n活跃消息：${this.messages.length}条\n记忆块：${this.memoryChunks.length}个`);
+        document.body.removeChild(modal);
+      } catch (e) {
+        console.warn('restore from indexeddb failed', e);
+        alert('恢复失败，请稍后重试');
+      }
+    });
 
     importBtn.addEventListener('click', async () => {
       const file = importInput.files && importInput.files[0];
