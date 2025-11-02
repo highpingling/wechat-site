@@ -66,7 +66,33 @@ const ChatManager = {
     this.memorySystem = new MemorySystem();
     // bind UI
     this.chatMessagesEl = opts.chatMessagesEl;
-    this.addMessageFn = opts.addMessageFn; // function to render message to UI
+    // 包装渲染函数：拦截外部对助手消息的渲染，确保写入 ChatManager.messages 与备份
+    if (typeof opts.addMessageFn === 'function') {
+      const _origAdd = opts.addMessageFn;
+      this.addMessageFn = (text, who, isAssistant) => {
+        _origAdd(text, who, isAssistant);
+        // 仅当不是内部重渲染阶段，且为助手消息时，记录进消息数组
+        if (!this._isRendering && (isAssistant || who === 'boyfriend')) {
+          const last = this.messages[this.messages.length - 1];
+          // 去重：避免重复写入完全相同的最后一条助手消息
+          if (!(last && last.role === 'assistant' && last.text === text)) {
+            const m = { role: 'assistant', text, ts: Date.now() };
+            this.messages.push(m);
+            // 同步写入记忆系统（短期记忆）
+            if (this.memorySystem) {
+              try {
+                this.memorySystem.addMemory({ type: 'message', content: m, summary: text, ts: m.ts });
+              } catch (e) { /* noop */ }
+            }
+            // 备份与调试面板更新
+            this.backupToIndexedDB();
+            this._updateDebugPanel();
+          }
+        }
+      };
+    } else {
+      this.addMessageFn = null;
+    }
     // 初始化调试面板更新
     this._initDebugPanel();
     // load config from localStorage
@@ -262,8 +288,14 @@ const ChatManager = {
   renderAllMessages() {
     if (!this.chatMessagesEl) return;
     this.chatMessagesEl.innerHTML = '';
-    for (const m of this.messages) {
-      if (this.addMessageFn) this.addMessageFn(m.text, m.role === 'user' ? 'me' : 'boyfriend', m.role !== 'user');
+    // 标记内部重渲染，避免包装后的 addMessageFn 误将历史消息再次写入 messages
+    this._isRendering = true;
+    try {
+      for (const m of this.messages) {
+        if (this.addMessageFn) this.addMessageFn(m.text, m.role === 'user' ? 'me' : 'boyfriend', m.role !== 'user');
+      }
+    } finally {
+      this._isRendering = false;
     }
   },
 
