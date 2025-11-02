@@ -1,0 +1,19 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Start Web Server (8010)",
+			"type": "shell",
+			"command": "python3",
+			"args": [
+				"-m",
+				"http.server",
+				"8010"
+			],
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build",
+			"runOptions": { "runOn": "folderOpen" }
+		}
+	]
+}
