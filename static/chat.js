@@ -59,7 +59,16 @@ const ChatManager = {
   maxMemoryChunks: 40,
   lastSummarizeTime: 0, // 记录上次总结时间
   initOptions: {},
+  // 调试与备份控制
+  debugLogs: false, // 如需查看更多日志，在控制台执行：localStorage.setItem('debugBackup','1')
+  _lastBackupTs: 0,
+  _backupDebounceTimer: null,
   _localCacheKey: 'latest_session_cache',
+  _log(...args){
+    try {
+      if (this.debugLogs || localStorage.getItem('debugBackup') === '1') console.log(...args);
+    } catch(_){}
+  },
 
   async init(opts = {}) {
     this.initOptions = opts;
@@ -141,9 +150,9 @@ const ChatManager = {
     // show startup modal to import or start new
     this.showStartupModal();
 
-  // periodic auto backup to IndexedDB（更频繁，降低丢失窗口）
+  // periodic auto backup to IndexedDB（适中频率，配合变更去抖）
   if (this._autoBackupTimer) clearInterval(this._autoBackupTimer);
-  this._autoBackupTimer = setInterval(() => this.backupToIndexedDB(), 10_000); // every 10s
+  this._autoBackupTimer = setInterval(() => this.backupToIndexedDB(), 15_000); // every 15s 兜底
 
     // schedule periodic summarize check (每3分钟检查一次)
     setInterval(() => this.maybeSummarizeByTime(), 180_000);
@@ -499,8 +508,18 @@ const ChatManager = {
       // 先写本地缓存（同步，抗刷新）
       try { localStorage.setItem(this._localCacheKey, JSON.stringify(snap)); } catch(_) {}
       await idbPut(BACKUP_STORE, 'latest_session', snap);
-      try { console.log('[backup] saved snapshot:', {len: this.messages.length, chunks: this.memoryChunks.length, ts: snap.ts}); } catch(_){ }
+      this._lastBackupTs = snap.ts;
+      this._log('[backup] saved snapshot:', {len: this.messages.length, chunks: this.memoryChunks.length, ts: snap.ts});
     } catch (e) { console.warn('backup failed', e); }
+  },
+
+  // 变更后延迟保存：合并短时间内的多次变更，避免频繁写入
+  _scheduleBackupSoon(delay=1500){
+    if (this._backupDebounceTimer) clearTimeout(this._backupDebounceTimer);
+    this._backupDebounceTimer = setTimeout(() => {
+      this.backupToIndexedDB();
+      this._backupDebounceTimer = null;
+    }, delay);
   },
 
   downloadBackup() {
@@ -719,8 +738,8 @@ const ChatManager = {
       });
     }
 
-    // backup（同时刷新本地缓存）
-    this.backupToIndexedDB();
+    // backup（去抖，避免频繁写入）
+    this._scheduleBackupSoon();
     // 更新调试面板
     this._updateDebugPanel();
   },
@@ -737,8 +756,9 @@ const ChatManager = {
     }
 
     // 立即备份，防止用户看到回复后立刻刷新导致丢失（同步本地缓存 + IndexedDB）
-    try { console.log('[assistant]', text); } catch(_){ }
-    this.backupToIndexedDB();
+    this._log('[assistant]', text);
+    // 去抖备份
+    this._scheduleBackupSoon();
     this._updateDebugPanel();
   },
 
