@@ -141,8 +141,9 @@ const ChatManager = {
     // show startup modal to import or start new
     this.showStartupModal();
 
-    // periodic auto backup to IndexedDB
-    setInterval(() => this.backupToIndexedDB(), 30_000); // every 30s
+  // periodic auto backup to IndexedDB（更频繁，降低丢失窗口）
+  if (this._autoBackupTimer) clearInterval(this._autoBackupTimer);
+  this._autoBackupTimer = setInterval(() => this.backupToIndexedDB(), 10_000); // every 10s
 
     // schedule periodic summarize check (每3分钟检查一次)
     setInterval(() => this.maybeSummarizeByTime(), 180_000);
@@ -498,7 +499,7 @@ const ChatManager = {
       // 先写本地缓存（同步，抗刷新）
       try { localStorage.setItem(this._localCacheKey, JSON.stringify(snap)); } catch(_) {}
       await idbPut(BACKUP_STORE, 'latest_session', snap);
-      // console.log('backup saved to indexeddb');
+      try { console.log('[backup] saved snapshot:', {len: this.messages.length, chunks: this.memoryChunks.length, ts: snap.ts}); } catch(_){ }
     } catch (e) { console.warn('backup failed', e); }
   },
 
@@ -736,8 +737,15 @@ const ChatManager = {
     }
 
     // 立即备份，防止用户看到回复后立刻刷新导致丢失（同步本地缓存 + IndexedDB）
+    try { console.log('[assistant]', text); } catch(_){ }
     this.backupToIndexedDB();
     this._updateDebugPanel();
+  },
+
+  // 手动触发一次备份（用于调试或快速保存）
+  async forceBackupNow() {
+    await this.backupToIndexedDB();
+    alert('已立即保存快照（IndexedDB + 本地缓存）');
   },
 
   // 查看记忆状态
