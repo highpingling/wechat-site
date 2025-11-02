@@ -59,6 +59,7 @@ const ChatManager = {
   maxMemoryChunks: 40,
   lastSummarizeTime: 0, // 记录上次总结时间
   initOptions: {},
+  _localCacheKey: 'latest_session_cache',
 
   async init(opts = {}) {
     this.initOptions = opts;
@@ -208,8 +209,14 @@ const ChatManager = {
 
     // 初始化恢复按钮状态
     try {
-      const backup = await idbGet(BACKUP_STORE, 'latest_session');
-      if (!backup || !Array.isArray(backup.messages) || backup.messages.length === 0) {
+      const [backup, cacheRaw] = await Promise.all([
+        idbGet(BACKUP_STORE, 'latest_session'),
+        Promise.resolve(localStorage.getItem(this._localCacheKey))
+      ]);
+      const cache = cacheRaw ? JSON.parse(cacheRaw) : null;
+      const hasAny = (backup && Array.isArray(backup.messages) && backup.messages.length) ||
+                     (cache && Array.isArray(cache.messages) && cache.messages.length);
+      if (!hasAny) {
         restoreBtn.disabled = true;
         restoreBtn.textContent = '恢复上次会话（无可用）';
       }
@@ -221,7 +228,16 @@ const ChatManager = {
     // 点击恢复：从 IndexedDB 读取最近快照
     restoreBtn.addEventListener('click', async () => {
       try {
-        const backup = await idbGet(BACKUP_STORE, 'latest_session');
+        const [idbSnap, cacheRaw] = await Promise.all([
+          idbGet(BACKUP_STORE, 'latest_session'),
+          Promise.resolve(localStorage.getItem(this._localCacheKey))
+        ]);
+        const cache = cacheRaw ? JSON.parse(cacheRaw) : null;
+        // 选择较新的快照
+        let backup = idbSnap;
+        if (cache && (!backup || (cache.ts && backup.ts && cache.ts > backup.ts))) {
+          backup = cache;
+        }
         if (!backup || !Array.isArray(backup.messages)) {
           alert('没有可恢复的会话（本地未找到备份）');
           return;
@@ -478,7 +494,10 @@ const ChatManager = {
 
   async backupToIndexedDB() {
     try {
-      await idbPut(BACKUP_STORE, 'latest_session', { messages: this.messages, memoryChunks: this.memoryChunks, ts: Date.now() });
+      const snap = { messages: this.messages, memoryChunks: this.memoryChunks, ts: Date.now() };
+      // 先写本地缓存（同步，抗刷新）
+      try { localStorage.setItem(this._localCacheKey, JSON.stringify(snap)); } catch(_) {}
+      await idbPut(BACKUP_STORE, 'latest_session', snap);
       // console.log('backup saved to indexeddb');
     } catch (e) { console.warn('backup failed', e); }
   },
@@ -699,7 +718,7 @@ const ChatManager = {
       });
     }
 
-    // backup
+    // backup（同时刷新本地缓存）
     this.backupToIndexedDB();
     // 更新调试面板
     this._updateDebugPanel();
@@ -716,7 +735,7 @@ const ChatManager = {
       } catch (e) { /* noop */ }
     }
 
-    // 立即备份，防止用户看到回复后立刻刷新导致丢失
+    // 立即备份，防止用户看到回复后立刻刷新导致丢失（同步本地缓存 + IndexedDB）
     this.backupToIndexedDB();
     this._updateDebugPanel();
   },
