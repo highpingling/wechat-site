@@ -446,7 +446,7 @@
   <script>
     // 后端接口地址 - 请根据你的实际部署修改
     const BACKEND_CHAT_URL = "https://sonnet.highpingling.workers.dev/"; // 你的LLM聊天接口
-    const BACKEND_TTS_URL = "https://tts.highpingling.workers.dev/";   // 你的语音合成接口
+    const BACKEND_TTS_URL = "https://tts-icwn.onrender.com/api/tts";   // 你的语音合成接口
 
     // 默认头像路径 (请确保这些图片存在于你的项目根目录)
     const DEFAULT_ME_AVATAR = "./avatar_me.png";
@@ -707,6 +707,26 @@
         const audioUrl = URL.createObjectURL(audioBlob);
         audioPlayer.src = audioUrl;
         audioPlayer.play();
+
+          // 自动下载语音文件
+          const now = new Date();
+          const timestamp = now.getFullYear() + 
+                          String(now.getMonth() + 1).padStart(2, '0') + 
+                          String(now.getDate()).padStart(2, '0') + '_' +
+                          String(now.getHours()).padStart(2, '0') + 
+                          String(now.getMinutes()).padStart(2, '0') + 
+                          String(now.getSeconds()).padStart(2, '0');
+          const filename = `voice_${timestamp}.mp3`;
+          
+          const downloadLink = document.createElement('a');
+          downloadLink.href = audioUrl;
+          downloadLink.download = filename;
+          downloadLink.style.display = 'none';
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+          
+          console.log(`语音已自动下载: ${filename}`);
 
         audioPlayer.onended = () => {
           URL.revokeObjectURL(audioUrl); // 播放结束后释放URL资源
