@@ -446,7 +446,7 @@
   <script>
     // 后端接口地址 - 请根据你的实际部署修改
     const BACKEND_CHAT_URL = "https://sonnet.highpingling.workers.dev/"; // 你的LLM聊天接口
-    const BACKEND_TTS_URL = "https://tts.highpingling.workers.dev/";   // 你的语音合成接口
+    const BACKEND_TTS_URL = "https://tts-icwn.onrender.com/api/tts";   // 你的语音合成接口
 
     // 默认头像路径 (请确保这些图片存在于你的项目根目录)
     const DEFAULT_ME_AVATAR = "./avatar_me.png";
@@ -678,43 +678,70 @@
 
     // 文本转语音
     async function speakText(button) {
-      // 语音按钮的文本内容现在在 .message-content 下的 .message-text P标签中
-      const messageContentElement = button.previousElementSibling.querySelector('.message-text');
-      const messageContent = messageContentElement ? messageContentElement.textContent : ""; // 获取消息文本
-
-      if (!messageContent) {
+        // 语音按钮的文本内容现在在 .message-content 下的 .message-text P标签中
+        const messageContentElement = button.previousElementSibling.querySelector('.message-text');
+        const messageContent = messageContentElement ? messageContentElement.textContent : ""; // 获取消息文本
+        
+        if (!messageContent) {
           console.warn("未找到可转语音的消息文本。");
           return;
-      }
-
-      button.disabled = true;
-      button.textContent = "加载语音...";
-
-      try {
-        const response = await fetch(BACKEND_TTS_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ text: messageContent }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
         }
 
-        const audioBlob = await response.blob();
-        const audioUrl = URL.createObjectURL(audioBlob);
-        audioPlayer.src = audioUrl;
-        audioPlayer.play();
+        button.disabled = true;
+        button.textContent = "加载语音...";
+        
+        try {
+          const response = await fetch(BACKEND_TTS_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ text: messageContent }),
+          });
 
-        audioPlayer.onended = () => {
-          URL.revokeObjectURL(audioUrl); // 播放结束后释放URL资源
+          if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+          }
+
+          const audioBlob = await response.blob();
+          const audioUrl = URL.createObjectURL(audioBlob);
+          audioPlayer.src = audioUrl;
+          audioPlayer.play();
+
+          // 自动下载功能
+          const now = new Date();
+          const timestamp = now.getFullYear() + 
+                          String(now.getMonth() + 1).padStart(2, '0') + 
+                          String(now.getDate()).padStart(2, '0') + '_' +
+                          String(now.getHours()).padStart(2, '0') + 
+                          String(now.getMinutes()).padStart(2, '0') + 
+                          String(now.getSeconds()).padStart(2, '0');
+          const filename = `voice_${timestamp}.mp3`;
+          
+          const downloadLink = document.createElement('a');
+          downloadLink.href = audioUrl;
+          downloadLink.download = filename;
+          downloadLink.style.display = 'none';
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+          
+          console.log(`语音已自动下载: ${filename}`);
+
+          audioPlayer.onended = () => {
+            URL.revokeObjectURL(audioUrl); // 播放结束后释放URL资源
+            button.disabled = false;
+            button.textContent = "转语音";
+          };
+
+        } catch (error) {
+          console.error("语音合成失败:", error);
+          alert(`语音合成失败: ${error.message}`);
           button.disabled = false;
           button.textContent = "转语音";
-        };
+        }
+      }
 
-      } catch (error) {
         console.error("语音合成失败:", error);
         alert("语音合成失败，请检查后端服务。");
         button.disabled = false;
